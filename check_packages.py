@@ -257,7 +257,8 @@ def compare(packages, accuracy, use_epoch, year_filters, vector_filters, only_wi
 	use_aliases = True
 	package_aliases = [
 		['kernel','linux_kernel'],
-		['apache','apache2','apache_webserver','apache_http_server']
+		['apache','apache2','apache_webserver','apache_http_server'],
+                ['libc6', 'glibc'],
 	]
 	
 	if use_aliases:
