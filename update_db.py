@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import time, re, os, sys, shutil
+import time, re, os, sys, shutil, threading
 import sqlite3 as sqlite
 from datetime import datetime
 from urllib.request import urlretrieve
@@ -247,30 +247,39 @@ def update_vulnerabilities(keep_xml):
 
 
 
+def downloader(year, years_to_update):
+    # get cves
+    localfile = 'nvdcve-%s.xml' % (year)
+    try:
+        urlretrieve('https://nvd.nist.gov/download/nvdcve-%s.xml.gz' % (year), localfile+'.gz')
+    except HTTPError:
+        warn('Cannot get data for %s.' % (year))
+    # extract
+    try:
+        with gzip.open(localfile+'.gz', 'rb') as fg:
+            with open(localfile, 'wb') as f:
+                f.write(fg.read())
+        os.remove(localfile+'.gz')
+        if year == 'Modified':
+            years_to_update[year] = ''
+            return
+        # mark for update if hash is different
+        sha = sha1(localfile)
+        if sha != db.get_property('%s_sha1' % (year)):
+            years_to_update[year] = sha
+    except FileNotFoundError:
+        warn('GZ extraction failed for year %s' % (year))
+    
+
 def download_years(years):
     years_to_update = {} # year: sha1
+    threads = []
     for year in years:
-        # get cves
-        localfile = 'nvdcve-%s.xml' % (year)
-        try:
-            urlretrieve('https://nvd.nist.gov/download/nvdcve-%s.xml.gz' % (year), localfile+'.gz')
-        except HTTPError:
-            warn('Cannot get data for %s.' % (year))
-        # extract
-        try:
-            with gzip.open(localfile+'.gz', 'rb') as fg:
-                with open(localfile, 'wb') as f:
-                    f.write(fg.read())
-            os.remove(localfile+'.gz')
-            if year == 'Modified':
-                years_to_update[year] = ''
-                continue
-            # mark for update if hash is different
-            sha = sha1(localfile)
-            if sha != db.get_property('%s_sha1' % (year)):
-                years_to_update[year] = sha
-        except FileNotFoundError:
-            warn('GZ extraction failed for year %s' % (year))
+        t = threading.Thread(target=downloader, args=(year, years_to_update))
+        threads.append(t)
+        t.start()
+    for t in threads:
+        t.join()
     return years_to_update
 
 
