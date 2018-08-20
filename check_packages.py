@@ -170,11 +170,11 @@ class DBVuln(DB):
 		return result[0][0]
 
 
-	def get_cves_for_apps(self, tag, checkversion=True, ignore_partial=False):
-		if ignore_partial:
-			result = self.execute("SELECT DISTINCT Ven.name, P.name, V.value, CVE.*, (case CVE.severity when 'High' then 2 when 'Medium' then 1 else 0 end) as sort FROM Vendor Ven INNER JOIN Product P ON Ven.vendorid = P.vendorid INNER JOIN Version V ON P.productid = V.productid INNER JOIN CV ON CV.versionid = V.versionid INNER JOIN CVE ON CVE.cveid = CV.cveid WHERE EXISTS(SELECT * FROM Temporary where name = p.name %s AND tag=:t) ORDER BY P.name, sort DESC, CVE.name DESC" % ("AND (v.value='' OR (v.prev=1 AND v.sortable>sortable))" if checkversion else ''), {'t': tag})
-		else:
+	def get_cves_for_apps(self, tag, checkversion=True, use_partial=True):
+		if use_partial:
 			result = self.execute("SELECT DISTINCT Ven.name, P.name, V.value, CVE.*, (case CVE.severity when 'High' then 2 when 'Medium' then 1 else 0 end) as sort FROM Vendor Ven INNER JOIN Product P ON Ven.vendorid = P.vendorid INNER JOIN Version V ON P.productid = V.productid INNER JOIN CV ON CV.versionid = V.versionid INNER JOIN CVE ON CVE.cveid = CV.cveid WHERE EXISTS(SELECT * FROM Temporary where name = p.name %s AND tag=:t) ORDER BY P.name, sort DESC, CVE.name DESC" % ("AND (sortable LIKE v.sortable||'%%' OR v.value='' OR v.value='-' OR (v.prev=1 AND v.sortable>sortable))" if checkversion else ''), {'t': tag})
+		else:
+			result = self.execute("SELECT DISTINCT Ven.name, P.name, V.value, CVE.*, (case CVE.severity when 'High' then 2 when 'Medium' then 1 else 0 end) as sort FROM Vendor Ven INNER JOIN Product P ON Ven.vendorid = P.vendorid INNER JOIN Version V ON P.productid = V.productid INNER JOIN CV ON CV.versionid = V.versionid INNER JOIN CVE ON CVE.cveid = CV.cveid WHERE EXISTS(SELECT * FROM Temporary where name = p.name %s AND tag=:t) ORDER BY P.name, sort DESC, CVE.name DESC" % ("AND (v.value='' OR (v.prev=1 AND v.sortable>sortable))" if checkversion else ''), {'t': tag})
 		if result == DB_ERROR:
 			return []
 		# return only unique cves, sort by severity and CVE
@@ -251,7 +251,7 @@ def parse_input(data, pm_type):
 """
 		
 
-def compare(packages, accuracy, use_epoch, year_filters, vector_filters, only_with_exploit=False, ignore_partial=False):
+def compare(packages, accuracy, use_epoch, year_filters, vector_filters, only_with_exploit=False, use_partial=True):
 	if not packages:
 		return
 	use_aliases = True
@@ -278,7 +278,7 @@ def compare(packages, accuracy, use_epoch, year_filters, vector_filters, only_wi
 	# 5. CVE detection
 	info('Detecting CVEs...')
 	
-	cves = db.get_cves_for_apps('TAG', accuracy!='none', ignore_partial)
+	cves = db.get_cves_for_apps('TAG', accuracy!='none', use_partial)
 	#print(cves)
 	# accuratize the returned version for report
 	cves = [list(x[:2]) + [get_accurate_version(accuracy, x[2], use_epoch)] + list(x[3:]) for x in cves]		
@@ -386,7 +386,7 @@ def help():
 	print('  --nocolor                                no fancy colors')
 	print('  --accuracy=none|major|minor|build|full   specify version comparison accuracy (default=\'build\')')
 	print('  --use-epoch                              use epoch number as major')
-	print('  --hide-partial                           do not use partial matching (limits false positives)')
+	print('  --use-partial                            use partial matching (gives more false positives)')
 	print('  --year=<YEAR>                            filter by specified year')
 	print('  --vector=<VECTOR>                        filter by CVSS vector part')
 	print('  --exploit                                only show CVEs with exploits')
@@ -407,7 +407,7 @@ accuracy = 'build'
 year_filters = []
 vector_filters = []
 only_with_exploit = ('--exploit' in sys.argv)
-ignore_partial = ('--ignore-partial' in sys.argv)
+use_partial = ('--use-partial' in sys.argv)
 if '--use-epoch' in sys.argv:
 	use_epoch = True
 for arg in sys.argv:
@@ -448,5 +448,5 @@ if not pm_type:
 	info('Assuming \'%s\' type.' % pm_type)
 packages = parse_input(data, pm_type)
 compare(packages, accuracy=accuracy, use_epoch=use_epoch, year_filters=year_filters, \
-	vector_filters=vector_filters, only_with_exploit=only_with_exploit, ignore_partial=ignore_partial)
+	vector_filters=vector_filters, only_with_exploit=only_with_exploit, use_partial=use_partial)
 db.clean()
