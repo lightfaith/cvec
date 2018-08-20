@@ -307,6 +307,8 @@ def compare(packages, accuracy, use_epoch, year_filters, vector_filters, only_wi
 	
 	if exploits:
 		ok('%d unique exploits found.' % (len(set([x for _,v in exploits.items() for x in v]))))
+	else:
+		info('No available exploits.')
 
 	# print everything
 	last_package = ''
